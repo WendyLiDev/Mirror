@@ -21,51 +21,14 @@ void Set_A2D_Pin(unsigned char pinNum){
 	// represents the desired pin for A2D conversion
 }
 
-/* takeInput converts the analog value from the photoresistor and converts it to a digital value stored in my_short */
-enum adc_States{adc_Start, adc_Init, adc_Wait} adc_State;
 unsigned char tmpB;
 unsigned char tmpD;
 unsigned short current_val; // stores current value read
 unsigned short my_short; //stores the average light
 unsigned char brightness; //should store a value from 0 - 20, 0 for off, 20 for brightest
-void takeInput(){
-	switch(adc_State){
-		case adc_Start:
-			adc_State = adc_Init;
-			break;
-		case adc_Init:
-			adc_State = adc_Wait;
-			break;
-		case adc_Wait:
-			break;	
-		default:
-			adc_State = adc_Start;
-			break;
-	}
-	switch(adc_State){
-		case adc_Init:
-			tmpB = tmpD = 0;
-			break;
-		case adc_Wait:
-			current_val = ADC;
-			my_short = ( my_short + current_val ) / 2;
-			if(my_short == 0){
-				brightness = 0;
-			}
-			else {
-				brightness = (my_short + 50) / 51;
-			}
-			tmpB = (char)my_short; //display on portb
-			tmpD = (char)(my_short >> 8); //display two bits on portd
-			break;
-		default:
-			break;
-	}
-	PORTB = tmpB;
-	PORTD = tmpD;
-}
 
-/* cycleInputs takes values from PA0 to PA7 one at a time.  */
+/* cycleInputs takes values from PA0 to PA7 one at a time.  
+converts the analog value from the photoresistor and converts it to a digital value stored in my_short */
 enum cycle_States{cycle_init, cycle_zero, cycle_one, cycle_two, cycle_three, cycle_four, cycle_five, cycle_six, cycle_seven}cycle_State;
 void cycleInputs(){
 	switch(cycle_State){ //transitions
@@ -102,34 +65,62 @@ void cycleInputs(){
 	switch(cycle_State){ //actions
 		case cycle_init:
 			Set_A2D_Pin(0x00);
+			tmpB = tmpD = 0;
 			break;
 		case cycle_zero:
 			Set_A2D_Pin(0x00);
+			current_val = ADC;
+			my_short = my_short + (current_val / 7);
 			break;
 		case cycle_one:
 			Set_A2D_Pin(0x01);
+			current_val = ADC;
+			my_short = my_short + (current_val / 7);
 			break;
 		case cycle_two:
 			Set_A2D_Pin(0x02);
+			current_val = ADC;
+			my_short = my_short + (current_val / 7);
 			break;
 		case cycle_three:
 			Set_A2D_Pin(0x03);
+			current_val = ADC;
+			my_short = my_short + (current_val / 7);
 			break;
 		case cycle_four:
 			Set_A2D_Pin(0x04);
+			current_val = ADC;
+			my_short = my_short + (current_val / 7);
 			break;
 		case cycle_five:
 			Set_A2D_Pin(0x05);
+			current_val = ADC;
+			my_short = my_short + (current_val / 7);
 			break;
 		case cycle_six:
 			Set_A2D_Pin(0x06);
+			current_val = ADC;
+			my_short = my_short + (current_val / 7);
 			break;
 		case cycle_seven:
 			Set_A2D_Pin(0x07);
+			current_val = ADC;
+			my_short = my_short + (current_val / 7);
+			if(my_short == 0){
+				brightness = 0;
+			}
+			else {
+				brightness = (my_short + 50) / 51;
+			}
+			// tmpB = (char)my_short; //display on portb
+			// tmpD = (char)(my_short >> 8); //display two bits on portd
+			tmpB = (char)brightness;
 			break;
 		default:
 			break;
 	}
+	PORTB = tmpB;
+	PORTD = tmpD;
 }
 
 int main(void)
@@ -138,14 +129,12 @@ int main(void)
 	DDRD = 0xFF; PORTD = 0x00;
 	DDRA = 0x00; PORTA = 0xFF;
 	
-	adc_State = adc_Start;
 	cycle_State = cycle_init;
 	tmpB = tmpD = 0;
 	ADC_init();
 	
 	while(1)
 	{
-		takeInput();
 		cycleInputs();
 	}
 	return 0;
