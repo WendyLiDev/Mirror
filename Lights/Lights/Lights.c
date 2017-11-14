@@ -70,6 +70,7 @@ void cycleInputs(){
 		case cycle_zero:
 			Set_A2D_Pin(0x00);
 			current_val = ADC;
+			my_short = 0;
 			my_short = my_short + (current_val / 7);
 			break;
 		case cycle_one:
