@@ -1,15 +1,17 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 volatile unsigned char TimerFlag = 0; //TimerISR() sets this to 1, we need to clear to 0
 
 unsigned long _avr_timer_M = 1; //start count from here to 0, default 1 ms
 unsigned long _avr_timer_cntcurr = 0; // current internal count of 1 ms ticks
 
-unsigned char brightness; //should store a value from 0 - 20, 0 for off, 20 for brightest
-static char manualOffset = 10;
-unsigned short time_On;
-unsigned short time_Off;
+unsigned short brightness; //should store a value from 0 - 20, 0 for off, 20 for brightest
+signed char manualOffset; // should be a value between -9 and 9
+unsigned short time_On; //Used in the PWM to dim lights
+unsigned short time_Off; //Used in the PWM to dim lights
 
 unsigned char GetBit(unsigned char x, unsigned char k){
 	return ((x & (0x01 << k)) != 0);
@@ -79,12 +81,24 @@ void ADC_init(){
 	// ADATE: Enables auto-triggering, allowing for constant
 	//	    analog to digital conversions.
 }
+void Set_A2D_Pin(unsigned char pinNum){
+	ADMUX = (pinNum <= 0x07) ? pinNum : ADMUX;
+	//Allow channel to stabilize
+	static unsigned char i = 0;
+	for(i = 0; i <15; i++) asm("nop");
+	// Pins on PORTA are used as input for A2D conversion
+	// The default channel is 0 (PA0)
+	// The value of pinNum determines the pin on PORTA
+	// used for A2D conversion
+	// Valid values range between 0 and 7, where the value
+	// represents the desired pin for A2D conversion
+}
 
 enum PWM_States{pwm_init, pwm}PWM_State;
 unsigned short cnt;
 void PWM_set(){
 	//brightness is a number between 0 and 20
-	//turn on for brightness ms and off for 20-brightness ms
+	//turn on for brightness (ms) and off for 20-brightness (ms)
 	switch(PWM_State){
 		case pwm_init:
 			PWM_State = pwm;
@@ -116,19 +130,6 @@ void PWM_set(){
 		default:
 			break;
 	}
-}
-
-void Set_A2D_Pin(unsigned char pinNum){
-	ADMUX = (pinNum <= 0x07) ? pinNum : ADMUX;
-	//Allow channel to stabilize
-	static unsigned char i = 0;
-	for(i = 0; i <15; i++) asm("nop");
-	// Pins on PORTA are used as input for A2D conversion
-	// The default channel is 0 (PA0)
-	// The value of pinNum determines the pin on PORTA
-	// used for A2D conversion
-	// Valid values range between 0 and 7, where the value
-	// represents the desired pin for A2D conversion
 }
 
 enum button_States{button_init, button_wait, button_up, button_up_wait_rel, button_down, button_down_wait_rel}button_State;
@@ -185,20 +186,20 @@ void adjustLight(){
 	}
 	switch(button_State){
 		case button_init:
-			manualOffset = 10;
+			manualOffset = 0;
 			break;
 		case button_wait:
 			break;
 		case button_up:
-			if(manualOffset < 19){
-				manualOffset = manualOffset + 3;
+			if(manualOffset < 9){
+				manualOffset = manualOffset + 1;
 			}
 			break;
 		case button_up_wait_rel:
 			break;
 		case button_down:
-			if(manualOffset > 1){
-				manualOffset = manualOffset - 3;
+			if(manualOffset > -9){
+				manualOffset = manualOffset - 1;
 			}
 			break;
 		case button_down_wait_rel:
@@ -210,6 +211,7 @@ void adjustLight(){
 	
 unsigned short current_val; // stores current value read
 unsigned short my_short; //stores the average light
+unsigned short temp;
 /* cycleInputs takes values from PA0 to PA7 one at a time.  
 converts the analog value from the photoresistor and converts it to a digital value stored in my_short */
 enum cycle_States{cycle_init, cycle}cycle_State;
@@ -237,27 +239,51 @@ void cycleInputs(){
 		case cycle:
 			Set_A2D_Pin(currentPin);
 			current_val = ADC;
-			my_short = my_short + (current_val / 7);
+			my_short = my_short  + (current_val / 8);
+			
+			//only executed when on the last photoresistor
 			if(currentPin == 0x07){
 				if(my_short <= 0){
-					brightness = 0;
-					brightness = brightness + manualOffset - 10;
+					if(manualOffset > 0){ 
+						brightness = manualOffset; // manualOffset is a value between -9 to 9
+												// it will increase brightness if above 10 and decrease if below 10
+					}
+					else{
+						brightness = 0;
+					}
 				}
 				else {
 					//update the value of brightness once every eight cycles through all the photoresistors
-					brightness = ((my_short + 50) / 51);
-					brightness = brightness + manualOffset - 10;
+					if(my_short > 1020){
+						my_short = 1020;
+					}
+					//brightness = ((my_short + 50) / 51); //brightness is a number between 0 and 20
+					brightness = 5;
+					if(manualOffset < 0){ // if manualOffset is negative
+						temp = abs(manualOffset);
+						if((brightness - temp) <= 0){
+							brightness = 0;
+						}
+						else{
+							brightness = brightness - temp;
+						}
+					}
+					else{ // manualOffset is positive
+						brightness = brightness + manualOffset;
+					}
 				}
+				
 				if(brightness < 0){
 					brightness = 0;
 				}
 				else if(brightness > 20){
 					brightness = 20;
 				}
-				currentPin = 0x00;
+				
 				my_short = 0;
 				time_On = brightness;
 				time_Off = (21-brightness);
+				currentPin = 0x00;
 			}
 			else{
 				currentPin++;
@@ -284,11 +310,11 @@ int main(void)
 	button_State = button_init;
 	while(1)
 	{
-		if(pwm_elapsed_time >= 25){
+		if(pwm_elapsed_time >= 20){
 			adjustLight();
 			cycleInputs();
 			pwm_elapsed_time = 0;
-			//PORTC = manualOffset;
+			PORTC = brightness;
 		}
 		PWM_set();
 		while(!TimerFlag);
