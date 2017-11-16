@@ -7,7 +7,16 @@ unsigned long _avr_timer_M = 1; //start count from here to 0, default 1 ms
 unsigned long _avr_timer_cntcurr = 0; // current internal count of 1 ms ticks
 
 unsigned char brightness; //should store a value from 0 - 20, 0 for off, 20 for brightest
+static char manualOffset = 10;
+unsigned short time_On;
+unsigned short time_Off;
 
+unsigned char GetBit(unsigned char x, unsigned char k){
+	return ((x & (0x01 << k)) != 0);
+}
+unsigned char SetBit(unsigned char x, unsigned char k, unsigned char b){
+	return (b ? x | (0x01 << k) : x & ~(0x01 << k));
+}
 void TimerOn(){
     //Initialize and start the timer
 	//AVR timer/counter controller register TCCR1
@@ -72,14 +81,10 @@ void ADC_init(){
 }
 
 enum PWM_States{pwm_init, pwm}PWM_State;
-	
-short time_On;
-short time_Off;
-short cnt;
+unsigned short cnt;
 void PWM_set(){
-	//brightness is a number between 0 and 19
-	//turn on for brightness and off for 20-brightness
-	
+	//brightness is a number between 0 and 20
+	//turn on for brightness ms and off for 20-brightness ms
 	switch(PWM_State){
 		case pwm_init:
 			PWM_State = pwm;
@@ -92,8 +97,6 @@ void PWM_set(){
 	}
 	switch(PWM_State){
 		case pwm_init:
-			time_On = brightness;
-			time_Off = (20-brightness);
 			cnt = 0;
 			break;
 		case pwm:
@@ -109,7 +112,6 @@ void PWM_set(){
 				PORTB = 0x00;
 				cnt=0;
 			}
-			
 			break;
 		default:
 			break;
@@ -129,140 +131,169 @@ void Set_A2D_Pin(unsigned char pinNum){
 	// represents the desired pin for A2D conversion
 }
 
-unsigned char tmpB;
-unsigned char tmpD;
+enum button_States{button_init, button_wait, button_up, button_up_wait_rel, button_down, button_down_wait_rel}button_State;
+void adjustLight(){
+	switch(button_State){
+		case button_init:
+			button_State = button_wait;
+			break;
+		case button_wait:
+			if( (!GetBit(~PIND, 0) && !GetBit(~PIND, 1)) || (GetBit(~PIND, 0) && GetBit(~PIND, 1)) ){
+				button_State = button_wait;
+			}
+			else if(GetBit(~PIND, 0) && !GetBit(~PIND, 1)){
+				button_State = button_up;
+			}
+			else if(GetBit(~PIND, 1) && !GetBit(~PIND, 0)){
+				button_State = button_down;
+			}
+			break;
+		case button_up:
+			if(GetBit(~PIND, 0)){
+				button_State = button_up_wait_rel;
+			}
+			else if(!GetBit(~PIND, 0)){
+				button_State = button_wait;
+			}
+			break;
+		case button_up_wait_rel:
+			if(GetBit(~PIND, 0)){
+				button_State = button_up_wait_rel;
+			}
+			else if(!GetBit(~PIND, 0)){
+				button_State = button_wait;
+			}
+			break;
+		case button_down:
+			if(GetBit(~PIND, 1)){
+				button_State = button_down_wait_rel;
+			}
+			else if(!GetBit(~PIND, 1)){
+				button_State = button_wait;
+			}
+			break;
+		case button_down_wait_rel:
+			if(GetBit(~PIND, 1)){
+				button_State = button_down_wait_rel;
+			}
+			else if(!GetBit(~PIND, 1)){
+				button_State = button_wait;
+			}
+			break;
+		default:
+			break;
+	}
+	switch(button_State){
+		case button_init:
+			manualOffset = 10;
+			break;
+		case button_wait:
+			break;
+		case button_up:
+			if(manualOffset < 19){
+				manualOffset = manualOffset + 3;
+			}
+			break;
+		case button_up_wait_rel:
+			break;
+		case button_down:
+			if(manualOffset > 1){
+				manualOffset = manualOffset - 3;
+			}
+			break;
+		case button_down_wait_rel:
+			break;
+		default:
+			break;
+	}
+}
+	
 unsigned short current_val; // stores current value read
 unsigned short my_short; //stores the average light
 /* cycleInputs takes values from PA0 to PA7 one at a time.  
 converts the analog value from the photoresistor and converts it to a digital value stored in my_short */
-enum cycle_States{cycle_init, cycle_zero, cycle_one, cycle_two, cycle_three, cycle_four, cycle_five, cycle_six, cycle_seven}cycle_State;
+enum cycle_States{cycle_init, cycle}cycle_State;
+unsigned char currentPin;
 void cycleInputs(){
 	switch(cycle_State){ //transitions
 		case cycle_init:
-			cycle_State = cycle_zero;
+			cycle_State = cycle;
 			break;
-		case cycle_zero:
-			cycle_State = cycle_one;
-			break;
-		case cycle_one:
-			cycle_State = cycle_two;
-			break;
-		case cycle_two:
-			cycle_State = cycle_three;
-			break;
-		case cycle_three:
-			cycle_State = cycle_four;
-			break;
-		case cycle_four:
-			cycle_State = cycle_five;
-			break;
-		case cycle_five:
-			cycle_State = cycle_six;
-			break;
-		case cycle_six:
-			cycle_State = cycle_seven;
-			break;
-		case cycle_seven:
-			cycle_State = cycle_zero;
+		case cycle:
+			cycle_State = cycle;
 			break;
 		default:
 			break;
 	}	
 	switch(cycle_State){ //actions
 		case cycle_init:
-			Set_A2D_Pin(0x00);
-			//tmpB = tmpD = 0;
-			break;
-		case cycle_zero:
-			Set_A2D_Pin(0x00);
-			current_val = ADC;
-			my_short = 0;
-			my_short = my_short + (current_val / 7);
-			break;
-		case cycle_one:
-			Set_A2D_Pin(0x01);
-			current_val = ADC;
-			my_short = my_short + (current_val / 7);
-			break;
-		case cycle_two:
-			Set_A2D_Pin(0x02);
-			current_val = ADC;
-			my_short = my_short + (current_val / 7);
-			break;
-		case cycle_three:
-			Set_A2D_Pin(0x03);
-			current_val = ADC;
-			my_short = my_short + (current_val / 7);
-			break;
-		case cycle_four:
-			Set_A2D_Pin(0x04);
-			current_val = ADC;
-			my_short = my_short + (current_val / 7);
-			break;
-		case cycle_five:
-			Set_A2D_Pin(0x05);
-			current_val = ADC;
-			my_short = my_short + (current_val / 7);
-			break;
-		case cycle_six:
-			Set_A2D_Pin(0x06);
-			current_val = ADC;
-			my_short = my_short + (current_val / 7);
-			break;
-		case cycle_seven:
-			Set_A2D_Pin(0x07);
-			current_val = ADC;
-			my_short = my_short + (current_val / 7);
-			if(my_short == 0){
-				brightness = 0;
-			}
-			else {
-				//update the value of brightness once every eight cycles through all the photoresistors
-				brightness = ((my_short + 50) / 51) ; //I subtracted two because of some error in my photoresistors, your parts may vary
-			}
+			brightness = 1;
 			time_On = brightness;
-			time_Off = (20-brightness);
-			// tmpB = (char)my_short; //display on portb
-			// tmpD = (char)(my_short >> 8); //display two bits on portd
-			// tmpB = (char)brightness; //display the value of brightness on portb
+			time_Off = (21-brightness);
+			currentPin = 0x00;
+			Set_A2D_Pin(currentPin);
+			my_short = 0;
+			break;
+		case cycle:
+			Set_A2D_Pin(currentPin);
+			current_val = ADC;
+			my_short = my_short + (current_val / 7);
+			if(currentPin == 0x07){
+				if(my_short <= 0){
+					brightness = 0;
+					brightness = brightness + manualOffset - 10;
+				}
+				else {
+					//update the value of brightness once every eight cycles through all the photoresistors
+					brightness = ((my_short + 50) / 51);
+					brightness = brightness + manualOffset - 10;
+				}
+				if(brightness < 0){
+					brightness = 0;
+				}
+				else if(brightness > 20){
+					brightness = 20;
+				}
+				currentPin = 0x00;
+				my_short = 0;
+				time_On = brightness;
+				time_Off = (21-brightness);
+			}
+			else{
+				currentPin++;
+			}
 			break;
 		default:
 			break;
 	}
-	PORTB = tmpB;
-	PORTD = tmpD;
 }
 
 int main(void)
 {
 	DDRB = 0xFF; PORTB = 0x00;
-	DDRD = 0xFF; PORTD = 0x00;
+	DDRC = 0xFF; PORTC = 0x00;
+	DDRD = 0x00; PORTD = 0xFF;
 	DDRA = 0x00; PORTA = 0xFF;
 	
-	unsigned long pwm_elapsed_time = 2;
-	unsigned long light_input_elapsed_time = 50;
-	const unsigned long timerPeriod = 2;
-	TimerSet(timerPeriod);
+	unsigned long pwm_elapsed_time = 1;
+	TimerSet(1);
 	TimerOn();
 	ADC_init();
 	cycle_State = cycle_init;
 	PWM_State = pwm_init;
-	//tmpB = tmpD = 0;
-	
+	button_State = button_init;
 	while(1)
 	{
-		if(pwm_elapsed_time>=500){
+		if(pwm_elapsed_time >= 25){
+			adjustLight();
 			cycleInputs();
 			pwm_elapsed_time = 0;
+			//PORTC = manualOffset;
 		}
-		if(light_input_elapsed_time >= 2){
-			PWM_set();
-			light_input_elapsed_time = 0;
-		}
+		PWM_set();
 		while(!TimerFlag);
 		TimerFlag = 0;
-		pwm_elapsed_time += timerPeriod;
-		light_input_elapsed_time += timerPeriod;
+		pwm_elapsed_time += 1;
 	}
 	return 0;
 }
