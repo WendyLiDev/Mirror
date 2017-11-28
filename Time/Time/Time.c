@@ -118,29 +118,55 @@ void tick(){
 	}
 }
 /*Calculates the time using the tickFSM and uses B1 to increment minutes , b2 to increment hours*/
-enum time_States{time_init, time_wait, time_minute, time_hour}time_State;
-char* timeStr = "  :             Good Night!";
+enum time_States{time_init, time_wait, time_minute,time_minute_wait_rel, time_hour, time_hour_wait_rel}time_State;
+char* timeStr = "00:00           Good Night!      ";
 void calculateTime(){
 	switch(time_State){
 		case time_init:
 			time_State = time_wait;
 			break;
 		case time_wait:
-			if(GetBit(PINB, 1)){
+			if(GetBit(~PINB, 1)){
 				time_State = time_minute;
 			}
-			else if(GetBit(PINB, 2)){
+			else if(GetBit(~PINB, 2)){
 				time_State = time_hour;
 			}
-			else if( (!GetBit(PINB, 1) || !GetBit(PINB, 2)) || (GetBit(PINB, 1) && GetBit(PINB, 2))){
+			else if( (!GetBit(~PINB, 1) || !GetBit(~PINB, 2)) || (GetBit(~PINB, 1) && GetBit(~PINB, 2))){
 				time_State = time_wait;
 			}
 			break;
 		case time_minute:
-			time_State = time_wait;
+			if(GetBit(~PINB, 1)){
+				time_State = time_minute_wait_rel;
+			}
+			else{
+				time_State = time_wait;
+			}
+			break;
+		case time_minute_wait_rel:
+			if(GetBit(~PINB, 1)){
+				time_State = time_minute_wait_rel;
+			}
+			else{
+				time_State = time_wait;
+			}
 			break;
 		case time_hour:
-			time_State = time_wait;
+			if(GetBit(~PINB, 2)){
+				time_State = time_hour_wait_rel;
+			}
+			else{
+				time_State = time_wait;
+			}
+			break;
+		case time_hour_wait_rel:
+			if(GetBit(~PINB, 2)){
+				time_State = time_hour_wait_rel;
+			}
+			else{
+				time_State = time_wait;
+			}
 			break;
 		default:
 			time_State = time_init;
@@ -171,6 +197,16 @@ void calculateTime(){
 				minutes ++;
 			}
 			break;
+		case time_minute_wait_rel:
+			if((minutes == 59) && (seconds ==59)){
+				hours ++;
+				minutes ++;
+			}
+			else if((hours == 23) && (minutes == 59) && (seconds == 59)){
+				hours = 0;
+				minutes = 0;
+			}
+			break;
 		case time_hour: //handles the case when user inputs time change
 			if(hours == 23){
 				hours = 0;
@@ -179,129 +215,164 @@ void calculateTime(){
 				hours++;
 			}
 			break;
+		case time_hour_wait_rel:
+			if((minutes == 59) && (seconds ==59)){
+				hours ++;
+				minutes ++;
+			}
+			else if((hours == 23) && (minutes == 59) && (seconds == 59)){
+				hours = 0;
+				minutes = 0;
+			}
+			break;
 		default:
-		break;
+			break;
 	}
 	};
 /*Displays the time based on variables "hours" and "minutes" as "hours":"minutes"*/
+char changedBool;
+char tempchar;
 enum disp_States{display_init, update}display_State;
 void displayTime(){
 	switch(display_State){
 		case display_init:
+			changedBool = 0; // if time has been updated, redisplay timeStr
 		break;
 		case update:
 			//updates bit 0 of the time
-			if(minutes > 58){ //only check when it is reaching the top of the hour
-				if((hours / 10) == 0){timeStr[0] = '0';}
-				else if((hours / 10) == 1){timeStr[0] = '1';}
-				else if((hours / 10) == 2){timeStr[0] = '2';}
-				else if((hours / 10) == 3){timeStr[0] = '3';}
-				else if((hours / 10) == 4){timeStr[0] = '4';}
-				else if((hours / 10) == 5){timeStr[0] = '5';}
-				else if((hours / 10) == 6){timeStr[0] = '6';}
-				else if((hours / 10) == 7){timeStr[0] = '7';}
-				else if((hours / 10) == 8){timeStr[0] = '8';}
-				else if((hours / 10) == 9){timeStr[0] = '9';}
-				//updates bit 1 of the time
-				if((hours % 10) == 0){timeStr[1] = '0';}
-				else if((hours % 10) == 1){timeStr[1] = '1';}
-				else if((hours % 10) == 2){timeStr[1] = '2';}
-				else if((hours % 10) == 3){timeStr[1] = '3';}
-				else if((hours % 10) == 4){timeStr[1] = '4';}
-				else if((hours % 10) == 5){timeStr[1] = '5';}
-				else if((hours % 10) == 6){timeStr[1] = '6';}
-				else if((hours % 10) == 7){timeStr[1] = '7';}
-				else if((hours % 10) == 8){timeStr[1] = '8';}
-				else if((hours % 10) == 9){timeStr[1] = '9';}
+			/*if((hours / 10) == 0){timeStr[0] = '0';}
+			else if((hours / 10) == 1){timeStr[0] = '1';}
+			else if((hours / 10) == 2){timeStr[0] = '2';}
+			else if((hours / 10) == 3){timeStr[0] = '3';}
+			else if((hours / 10) == 4){timeStr[0] = '4';}
+			else if((hours / 10) == 5){timeStr[0] = '5';}
+			else if((hours / 10) == 6){timeStr[0] = '6';}
+			else if((hours / 10) == 7){timeStr[0] = '7';}
+			else if((hours / 10) == 8){timeStr[0] = '8';}
+			else if((hours / 10) == 9){timeStr[0] = '9';}
+			//updates bit 1 of the time
+			if((hours % 10) == 0){timeStr[1] = '0';}
+			else if((hours % 10) == 1){timeStr[1] = '1';}
+			else if((hours % 10) == 2){timeStr[1] = '2';}
+			else if((hours % 10) == 3){timeStr[1] = '3';}
+			else if((hours % 10) == 4){timeStr[1] = '4';}
+			else if((hours % 10) == 5){timeStr[1] = '5';}
+			else if((hours % 10) == 6){timeStr[1] = '6';}
+			else if((hours % 10) == 7){timeStr[1] = '7';}
+			else if((hours % 10) == 8){timeStr[1] = '8';}
+			else if((hours % 10) == 9){timeStr[1] = '9';}
+			//updates bit 3 of the time
+			if((minutes / 10) == 0){timeStr[3] = '0';}
+			else if((minutes / 10) == 1){timeStr[3] = '1';}
+			else if((minutes / 10) == 2){timeStr[3] = '2';}
+			else if((minutes / 10) == 3){timeStr[3] = '3';}
+			else if((minutes / 10) == 4){timeStr[3] = '4';}
+			else if((minutes / 10) == 5){timeStr[3] = '5';}
+			else if((minutes / 10) == 6){timeStr[3] = '6';}
+			else if((minutes / 10) == 7){timeStr[3] = '7';}
+			else if((minutes / 10) == 8){timeStr[3] = '8';}
+			else if((minutes / 10) == 9){timeStr[3] = '9';}
+			//updates bit 4 of the time
+			if((minutes % 10) == 0){timeStr[4] = '0';}
+			else if((minutes % 10) == 1){timeStr[4] = '1';}
+			else if((minutes % 10) == 2){timeStr[4] = '2';}
+			else if((minutes % 10) == 3){timeStr[4] = '3';}
+			else if((minutes % 10) == 4){timeStr[4] = '4';}
+			else if((minutes % 10) == 5){timeStr[4] = '5';}
+			else if((minutes % 10) == 6){timeStr[4] = '6';}
+			else if((minutes % 10) == 7){timeStr[4] = '7';}
+			else if((minutes % 10) == 8){timeStr[4] = '8';}
+			else if((minutes % 10) == 9){timeStr[4] = '9';}
+			*/
+			tempchar = timeStr[0];
+			timeStr[0] = (hours/10) + '0';
+			if(tempchar != timeStr[0]){
+				changedBool = 1;
 			}
-				//updates bit 3 of the time
-			if(seconds > 58){ //only check when it is reaching the top of the minute
-				if((minutes / 10) == 0){timeStr[3] = '0';}
-				else if((minutes / 10) == 1){timeStr[3] = '1';}
-				else if((minutes / 10) == 2){timeStr[3] = '2';}
-				else if((minutes / 10) == 3){timeStr[3] = '3';}
-				else if((minutes / 10) == 4){timeStr[3] = '4';}
-				else if((minutes / 10) == 5){timeStr[3] = '5';}
-				else if((minutes / 10) == 6){timeStr[3] = '6';}
-				else if((minutes / 10) == 7){timeStr[3] = '7';}
-				else if((minutes / 10) == 8){timeStr[3] = '8';}
-				else if((minutes / 10) == 9){timeStr[3] = '9';}
-				//updates bit 4 of the time
-				if((minutes % 10) == 0){timeStr[4] = '0';}
-				else if((minutes % 10) == 1){timeStr[4] = '1';}
-				else if((minutes % 10) == 2){timeStr[4] = '2';}
-				else if((minutes % 10) == 3){timeStr[4] = '3';}
-				else if((minutes % 10) == 4){timeStr[4] = '4';}
-				else if((minutes % 10) == 5){timeStr[4] = '5';}
-				else if((minutes % 10) == 6){timeStr[4] = '6';}
-				else if((minutes % 10) == 7){timeStr[4] = '7';}
-				else if((minutes % 10) == 8){timeStr[4] = '8';}
-				else if((minutes % 10) == 9){timeStr[4] = '9';}
+			tempchar = timeStr[1];
+			timeStr[1] = (hours%10) + '0';
+			if(tempchar != timeStr[1]){
+				changedBool = 1;
 			}
-			//updates the greeting
-			if(minutes > 58){ //only check when it is reaching the top of the hour
-				if(hours == 6){
-					//Good morning!
-					timeStr[21] = 'm';
-					timeStr[22] = 'o';
-					timeStr[23] = 'r';
-					timeStr[24] = 'n';
-					timeStr[25] = 'i';
-					timeStr[26] = 'n';
-					timeStr[27] = 'g';
-					timeStr[28] = '!';
-					timeStr[29] = ' ';
-					timeStr[30] = ' ';
-					timeStr[31] = ' ';
-					timeStr[32] = ' ';
-				}
-				else if(hours == 12){
-					//Good afternoon! 
-					timeStr[21] = 'a';
-					timeStr[22] = 'f';
-					timeStr[23] = 't';
-					timeStr[24] = 'e';
-					timeStr[25] = 'r';
-					timeStr[26] = 'n';
-					timeStr[27] = 'o';
-					timeStr[28] = 'o';
-					timeStr[29] = 'n';
-					timeStr[30] = '!';
-					timeStr[31] = ' ';
-					timeStr[32] = ' ';
-				}
-				else if(hours == 18){
-					//Good evening!
-					timeStr[21] = 'e';
-					timeStr[22] = 'v';
-					timeStr[23] = 'e';
-					timeStr[24] = 'n';
-					timeStr[25] = 'i';
-					timeStr[26] = 'n';
-					timeStr[27] = 'g';
-					timeStr[28] = '!';
-					timeStr[29] = ' ';
-					timeStr[30] = ' ';
-					timeStr[31] = ' ';
-					timeStr[32] = ' ';
-				}
-				else if(hours == 22){
-					//Good Night!
-					timeStr[21] = 'n';
-					timeStr[22] = 'i';
-					timeStr[23] = 'g';
-					timeStr[24] = 'h';
-					timeStr[25] = 't';
-					timeStr[26] = '!';
-					timeStr[27] = ' ';
-					timeStr[28] = ' ';
-					timeStr[29] = ' ';
-					timeStr[30] = ' ';
-					timeStr[31] = ' ';
-					timeStr[32] = ' ';
-				}
+			tempchar = timeStr[3];
+			timeStr[3] = (minutes/10) + '0';
+			if(tempchar != timeStr[3]){
+				changedBool = 1;
 			}
-			LCD_DisplayString(1, timeStr);
+			tempchar = timeStr[4];
+			timeStr[4] = (minutes%10) + '0';
+			if(tempchar != timeStr[4]){
+				changedBool = 1;
+			}
+		//updates the greeting
+			if(hours == 6 && timeStr[21]!='m'){
+				//Good morning!
+				timeStr[21] = 'm';
+				timeStr[22] = 'o';
+				timeStr[23] = 'r';
+				timeStr[24] = 'n';
+				timeStr[25] = 'i';
+				timeStr[26] = 'n';
+				timeStr[27] = 'g';
+				timeStr[28] = '!';
+				timeStr[29] = ' ';
+				timeStr[30] = ' ';
+				timeStr[31] = ' ';
+				timeStr[32] = ' ';
+				changedBool = 1;
+			}
+			else if(hours == 12 && timeStr[21]!='a'){
+				//Good afternoon! 
+				timeStr[21] = 'a';
+				timeStr[22] = 'f';
+				timeStr[23] = 't';
+				timeStr[24] = 'e';
+				timeStr[25] = 'r';
+				timeStr[26] = 'n';
+				timeStr[27] = 'o';
+				timeStr[28] = 'o';
+				timeStr[29] = 'n';
+				timeStr[30] = '!';
+				timeStr[31] = ' ';
+				timeStr[32] = ' ';
+				changedBool = 1;
+			}
+			else if(hours == 18 && timeStr[21]!='e'){
+				//Good evening!
+				timeStr[21] = 'e';
+				timeStr[22] = 'v';
+				timeStr[23] = 'e';
+				timeStr[24] = 'n';
+				timeStr[25] = 'i';
+				timeStr[26] = 'n';
+				timeStr[27] = 'g';
+				timeStr[28] = '!';
+				timeStr[29] = ' ';
+				timeStr[30] = ' ';
+				timeStr[31] = ' ';
+				timeStr[32] = ' ';
+				changedBool = 1;
+			}
+			else if((hours == 0 || hours == 22) && timeStr[21]!='n'){
+				//Good Night!
+				timeStr[21] = 'n';
+				timeStr[22] = 'i';
+				timeStr[23] = 'g';
+				timeStr[24] = 'h';
+				timeStr[25] = 't';
+				timeStr[26] = '!';
+				timeStr[27] = ' ';
+				timeStr[28] = ' ';
+				timeStr[29] = ' ';
+				timeStr[30] = ' ';
+				timeStr[31] = ' ';
+				timeStr[32] = ' ';
+				changedBool = 1;
+			}
+			if(changedBool == 1){
+				LCD_DisplayString(1, timeStr);
+				changedBool = 0;
+			}
 			break;
 		default:
 			break;
@@ -317,9 +388,10 @@ void displayTime(){
 			break;
 	}
 }
+
 int main(void)
 {
-    TimerSet(1000);
+    TimerSet(50);
     TimerOn();
     DDRB = 0x00; PORTB = 0xFF;
 	DDRC = 0xFF; PORTC = 0x00;
@@ -329,15 +401,19 @@ int main(void)
 	display_State = display_init;
 	LCD_init();
 	//LCD_DisplayString( 1, "Hello World!");
+	unsigned long pwm_elapsed_time = 50;
 	
     while (1)
     {
-		tick();
+		if(pwm_elapsed_time >= 1000){
+			tick();
+			pwm_elapsed_time = 0;
+		}
 		calculateTime();
 		displayTime();
 	    while (!TimerFlag);  // Wait for timer period
 	    TimerFlag = 0;
-
+		pwm_elapsed_time += 50;
 
     }
 }
