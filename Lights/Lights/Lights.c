@@ -208,10 +208,125 @@ void adjustLight(){
 			break;
 	}
 }
+
+/* Handles the RGB LEDs */
+const char rainbow[6] = {0x24, 0x36, 0x12, 0x1B, 0x09, 0x2D};
+unsigned char rainbowIndex;
+enum color_States{color_init, color_wait, color_red, color_red_wait_rel, color_blue, color_blue_wait_rel, color_rainbow, color_rainbow_wait_rel, color_off_wait_rel}color_State;
+void rainbowLights(){
+	switch(color_State){
+		case color_init:
+				color_State = color_wait;
+				rainbowIndex = 0;
+				break;
+		case color_wait:
+			if(!GetBit(~PIND, 3)){
+				color_State = color_wait;
+			}
+			else if(GetBit(~PIND, 3)){
+				color_State = color_red_wait_rel;
+			}
+			break;
+		case color_red_wait_rel:
+			if(!GetBit(~PIND, 3)){ //wait for the button to be released before transitioning to red
+				color_State = color_red;
+			}
+			else if(GetBit(~PIND, 3)){
+				color_State = color_red_wait_rel;
+			}
+			break;
+		case color_red:
+			if(!GetBit(~PIND, 3)){ 
+				color_State = color_red;
+			}
+			else if(GetBit(~PIND, 3)){ //button pressed again, go to blue wait state
+				color_State = color_blue_wait_rel;
+			}
+			break;
+		case color_blue_wait_rel:
+			if(!GetBit(~PIND, 3)){ //button is released, go to blue
+				color_State = color_blue;
+			}
+			else if(GetBit(~PIND, 3)){ 
+				color_State = color_blue_wait_rel;
+			}
+			break;
+		case color_blue:
+			if(!GetBit(~PIND, 3)){ 
+				color_State = color_blue;
+			}
+			else if(GetBit(~PIND, 3)){
+				color_State = color_rainbow_wait_rel; //button pressed again, go to rainbow wait state
+			}
+			break;
+		case color_rainbow_wait_rel:
+			if(!GetBit(~PIND, 3)){ //button is released, go to rainbow
+				color_State = color_rainbow;
+			}
+			else if(GetBit(~PIND, 3)){
+				color_State = color_rainbow_wait_rel; 
+			}
+			break;
+			break;
+		case color_rainbow:
+			if(!GetBit(~PIND, 3)){ 
+				color_State = color_rainbow;
+			}
+			else if(GetBit(~PIND, 3)){ //button pressed again, go to wait state
+				color_State = color_off_wait_rel; 
+			}
+			break;
+		case color_off_wait_rel:
+			if(!GetBit(~PIND, 3)){ //button released go to wait state
+				color_State = color_wait;
+			}
+			else if(GetBit(~PIND, 3)){ 
+				color_State = color_off_wait_rel;
+			}
+			break;
+		default: break;
+		
+	}
+	switch(color_State){
+		case color_init:
+			PORTC = 0x00;
+			break;
+		case color_wait:
+			PORTC = 0x00;
+			break;
+		case color_red:
+			PORTC = 0x24; //set color to red
+			break;
+		case color_red_wait_rel:
+			break;
+		case color_blue:
+			if(PINC != 0x2D){
+				PORTC = 0x2D; //set color to magenta
+			}
+			else if(PINC == 0x2D){
+				PORTC = 0x09;
+			}
+			break;
+		case color_blue_wait_rel:
+			break;
+		case color_rainbow:
+			PORTC = rainbow[rainbowIndex];
+			if(rainbowIndex == 5){ rainbowIndex = 0; }
+			else{ rainbowIndex++; }
+			break;
+		case color_rainbow_wait_rel:
+			rainbowIndex = 0;
+			break;
+		default: break;
+	}
 	
+
+}
+
 unsigned short current_val; // stores current value read
 unsigned short my_short; //stores the average light
 unsigned short temp;
+signed short signedtemp;
 /* cycleInputs takes values from PA0 to PA7 one at a time.  
 converts the analog value from the photoresistor and converts it to a digital value stored in my_short */
 enum cycle_States{cycle_init, cycle}cycle_State;
@@ -257,11 +372,12 @@ void cycleInputs(){
 					if(my_short > 1020){
 						my_short = 1020;
 					}
-					//brightness = ((my_short + 50) / 51); //brightness is a number between 0 and 20
-					brightness = 5;
+					brightness = ((my_short + 50) / 51); //brightness is a number between 0 and 20
+					//brightness = 5;
 					if(manualOffset < 0){ // if manualOffset is negative
 						temp = abs(manualOffset);
-						if((brightness - temp) <= 0){
+						signedtemp = brightness-temp;
+						if(signedtemp <= 0){
 							brightness = 0;
 						}
 						else{
@@ -273,16 +389,16 @@ void cycleInputs(){
 					}
 				}
 				
-				if(brightness < 0){
-					brightness = 0;
+				if(brightness <= 0){
+					brightness = 0; 
 				}
 				else if(brightness > 20){
 					brightness = 20;
 				}
 				
-				my_short = 0;
 				time_On = brightness;
 				time_Off = (21-brightness);
+				my_short = 0;
 				currentPin = 0x00;
 			}
 			else{
@@ -297,7 +413,7 @@ void cycleInputs(){
 int main(void)
 {
 	DDRB = 0xFF; PORTB = 0x00;
-	DDRC = 0xFF; PORTC = 0x00;
+	DDRC = 0xFF; PORTC = 0x00; 
 	DDRD = 0x00; PORTD = 0xFF;
 	DDRA = 0x00; PORTA = 0xFF;
 	
@@ -308,13 +424,14 @@ int main(void)
 	cycle_State = cycle_init;
 	PWM_State = pwm_init;
 	button_State = button_init;
-	while(1)
-	{
-		if(pwm_elapsed_time >= 20){
+	color_State = color_init;
+	while(1){
+		if(pwm_elapsed_time >= 100){
 			adjustLight();
 			cycleInputs();
+			rainbowLights();
 			pwm_elapsed_time = 0;
-			PORTC = brightness;
+			//PORTC = brightness;
 		}
 		PWM_set();
 		while(!TimerFlag);
@@ -323,3 +440,12 @@ int main(void)
 	}
 	return 0;
 }
+
+/*
+KNOWN BUGS
+
+- When manually adjusting light down, even if brightness is the minimum value, manual offset continues to change. 
+  (You needs to up manual offset as much as you lowered it)
+- Occasionally, LEDs turn off during change in environment lighting, if light does not turn back on, restart power
+
+*/
