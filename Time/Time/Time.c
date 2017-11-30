@@ -22,9 +22,7 @@ unsigned char GetBit(unsigned char port, unsigned char number)
 	return ( port & (0x01 << number) );
 }
 
-//////////////////////////////////////////////////////////////////
 //////////////////////TIMER CODE /////////////////////////////////
-//////////////////////////////////////////////////////////////////
 // TimerISR() sets this to 1. C programmer should clear to 0.
 volatile unsigned char TimerFlag = 0;
 // Internal variables for mapping AVR's ISR to our cleaner TimerISR model.
@@ -81,7 +79,11 @@ void TimerSet(unsigned long M) {
 unsigned char seconds;
 unsigned char minutes;
 unsigned char hours;
+
+/*============================================= MY FSMs ================================================*/
+
 /*Handles ticking the clock once every second and increments minutes after 60 seconds*/
+unsigned char sleepTimer;
 enum tick_States{tick_init, tick_tick, tick_reset}tick_State;
 void tick(){ 
 	switch(tick_State){
@@ -111,12 +113,16 @@ void tick(){
 			break;
 		case tick_reset:
 			minutes++;
+			if(sleepTimer < 1){
+				sleepTimer++;
+			}
 			seconds = 0;
 			break;
 		default:
 			break;
 	}
 }
+
 /*Calculates the time using the tickFSM and uses B1 to increment minutes , b2 to increment hours*/
 enum time_States{time_init, time_wait, time_minute,time_minute_wait_rel, time_hour, time_hour_wait_rel}time_State;
 char* timeStr = "00:00           Good Night!      ";
@@ -229,61 +235,92 @@ void calculateTime(){
 			break;
 	}
 	};
+
+/* Turns on and off LCD display (controlled by PB0) */
+unsigned char powerStatus;
+unsigned char tempOff;
+enum power_States{power_init, power_wait, power_input, power_input_wait_rel, power_off}power_State;
+void LCDPower(){
+	switch(power_State){
+		case power_init:
+			power_State = power_wait;
+			break;
+		case power_wait:
+			if(!GetBit(~PINB, 0)){ 
+				if(sleepTimer == 1){
+					power_State = power_off;
+				}
+				else {
+					power_State = power_wait;
+				}
+			}
+			else if(GetBit(~PINB, 0)){
+				power_State = power_input;
+			}
+			break;
+		case power_input:
+			if(!GetBit(~PINB, 0)){ 
+				power_State = power_wait;
+			}
+			else if(GetBit(~PINB, 0)){
+				power_State = power_input_wait_rel;
+			}
+			break;
+		case power_input_wait_rel:
+			if(!GetBit(~PINB, 0)){ 
+				power_State = power_wait;
+			}
+			else if(GetBit(~PINB, 0)){
+				power_State = power_input_wait_rel;
+			}
+			break;
+		case power_off:
+			power_State = power_wait;
+			break;
+		default:
+			break;
+	}
+	switch(power_State){
+		case power_init:
+			PORTA = PORTA | 0x80; // Power to PA7
+			powerStatus = 1;
+			break;
+		case power_wait:
+			break;
+		case power_input:
+			sleepTimer = 0;
+			if(powerStatus == 1) { // If PA7 is on
+				PORTA = PORTA & 0x7F; // turn PA7 off (Turns the LCD off)
+				PORTD = PORTD & 0xDF;
+				powerStatus = 0;
+			}
+			else if (powerStatus == 0) {
+				PORTA = PORTA | 0x80; //turn PA7 on (Turn the LCD on)
+				PORTD = PORTD | 0x20;
+				powerStatus = 1;
+			}
+			break;
+		case power_input_wait_rel:
+			break;
+		case power_off:
+			PORTA = PORTA & 0x7F; // turn PA7 off (Turns the LCD off)
+			PORTD = PORTD & 0xDF;
+			powerStatus = 0;
+		default:
+			break;
+	}
+}
+
 /*Displays the time based on variables "hours" and "minutes" as "hours":"minutes"*/
 char changedBool;
 char tempchar;
-enum disp_States{display_init, update}display_State;
+enum disp_States{display_init, update, display_turn_off}display_State;
 void displayTime(){
 	switch(display_State){
 		case display_init:
 			changedBool = 0; // if time has been updated, redisplay timeStr
 		break;
 		case update:
-			//updates bit 0 of the time
-			/*if((hours / 10) == 0){timeStr[0] = '0';}
-			else if((hours / 10) == 1){timeStr[0] = '1';}
-			else if((hours / 10) == 2){timeStr[0] = '2';}
-			else if((hours / 10) == 3){timeStr[0] = '3';}
-			else if((hours / 10) == 4){timeStr[0] = '4';}
-			else if((hours / 10) == 5){timeStr[0] = '5';}
-			else if((hours / 10) == 6){timeStr[0] = '6';}
-			else if((hours / 10) == 7){timeStr[0] = '7';}
-			else if((hours / 10) == 8){timeStr[0] = '8';}
-			else if((hours / 10) == 9){timeStr[0] = '9';}
-			//updates bit 1 of the time
-			if((hours % 10) == 0){timeStr[1] = '0';}
-			else if((hours % 10) == 1){timeStr[1] = '1';}
-			else if((hours % 10) == 2){timeStr[1] = '2';}
-			else if((hours % 10) == 3){timeStr[1] = '3';}
-			else if((hours % 10) == 4){timeStr[1] = '4';}
-			else if((hours % 10) == 5){timeStr[1] = '5';}
-			else if((hours % 10) == 6){timeStr[1] = '6';}
-			else if((hours % 10) == 7){timeStr[1] = '7';}
-			else if((hours % 10) == 8){timeStr[1] = '8';}
-			else if((hours % 10) == 9){timeStr[1] = '9';}
-			//updates bit 3 of the time
-			if((minutes / 10) == 0){timeStr[3] = '0';}
-			else if((minutes / 10) == 1){timeStr[3] = '1';}
-			else if((minutes / 10) == 2){timeStr[3] = '2';}
-			else if((minutes / 10) == 3){timeStr[3] = '3';}
-			else if((minutes / 10) == 4){timeStr[3] = '4';}
-			else if((minutes / 10) == 5){timeStr[3] = '5';}
-			else if((minutes / 10) == 6){timeStr[3] = '6';}
-			else if((minutes / 10) == 7){timeStr[3] = '7';}
-			else if((minutes / 10) == 8){timeStr[3] = '8';}
-			else if((minutes / 10) == 9){timeStr[3] = '9';}
-			//updates bit 4 of the time
-			if((minutes % 10) == 0){timeStr[4] = '0';}
-			else if((minutes % 10) == 1){timeStr[4] = '1';}
-			else if((minutes % 10) == 2){timeStr[4] = '2';}
-			else if((minutes % 10) == 3){timeStr[4] = '3';}
-			else if((minutes % 10) == 4){timeStr[4] = '4';}
-			else if((minutes % 10) == 5){timeStr[4] = '5';}
-			else if((minutes % 10) == 6){timeStr[4] = '6';}
-			else if((minutes % 10) == 7){timeStr[4] = '7';}
-			else if((minutes % 10) == 8){timeStr[4] = '8';}
-			else if((minutes % 10) == 9){timeStr[4] = '9';}
-			*/
 			tempchar = timeStr[0];
 			timeStr[0] = (hours/10) + '0';
 			if(tempchar != timeStr[0]){
@@ -352,7 +389,7 @@ void displayTime(){
 				timeStr[31] = ' ';
 				timeStr[32] = ' ';
 				changedBool = 1;
-			}
+		}power_State = power_off;
 			else if((hours == 0 || hours == 22) && timeStr[21]!='n'){
 				//Good Night!
 				timeStr[21] = 'n';
@@ -369,11 +406,15 @@ void displayTime(){
 				timeStr[32] = ' ';
 				changedBool = 1;
 			}
-			if(changedBool == 1){
+			if(changedBool == 1){ // only update the display if a change has been made
 				LCD_DisplayString(1, timeStr);
 				changedBool = 0;
 			}
 			break;
+		case display_turn_off:
+			
+			timeStr = "                                 ";
+			LCD_DisplayString(1,timeStr);
 		default:
 			break;
 	}
@@ -393,14 +434,17 @@ int main(void)
 {
     TimerSet(50);
     TimerOn();
+	DDRA = 0xFF; PORTA = 0xFF;
     DDRB = 0x00; PORTB = 0xFF;
 	DDRC = 0xFF; PORTC = 0x00;
-	DDRD = 0xFF; PORTD = 0x00;
+	DDRD = 0xFF; PORTD = 0x20;
 	tick_State = tick_init;
 	time_State = time_init;
 	display_State = display_init;
+	power_State = power_init;
+	
 	LCD_init();
-	//LCD_DisplayString( 1, "Hello World!");
+	//LCD_DisplayString( 1, "Hello World!"); // For debugging purposes, check if your LCD is wired correctly
 	unsigned long pwm_elapsed_time = 50;
 	
     while (1)
@@ -409,6 +453,7 @@ int main(void)
 			tick();
 			pwm_elapsed_time = 0;
 		}
+		LCDPower();
 		calculateTime();
 		displayTime();
 	    while (!TimerFlag);  // Wait for timer period
@@ -417,3 +462,11 @@ int main(void)
 
     }
 }
+
+/*
+
+KNOWN BUGS:
+
+- Clock may be a bit off
+
+*/
