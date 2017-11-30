@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
 volatile unsigned char TimerFlag = 0; //TimerISR() sets this to 1, we need to clear to 0
 
 unsigned long _avr_timer_M = 1; //start count from here to 0, default 1 ms
@@ -396,10 +397,14 @@ void cycleInputs(){
 					brightness = 20;
 				}
 				
+				if(!GetBit(PIND, 4)){ //If PD4 is low, brightness = 0
+					brightness = 0;
+				}
 				time_On = brightness;
 				time_Off = (21-brightness);
 				my_short = 0;
 				currentPin = 0x00;
+				//}
 			}
 			else{
 				currentPin++;
@@ -412,15 +417,16 @@ void cycleInputs(){
 
 int main(void)
 {
-	DDRB = 0xFF; PORTB = 0x00;
+	DDRB = 0xFF; PORTB = 0x00; // outputs
 	DDRC = 0xFF; PORTC = 0x00; 
-	DDRD = 0x00; PORTD = 0xFF;
+	DDRD = 0x00; PORTD = 0xFF; // inputs
 	DDRA = 0x00; PORTA = 0xFF;
 	
 	unsigned long pwm_elapsed_time = 1;
 	TimerSet(1);
 	TimerOn();
 	ADC_init();
+	
 	cycle_State = cycle_init;
 	PWM_State = pwm_init;
 	button_State = button_init;
@@ -447,5 +453,9 @@ KNOWN BUGS
 - When manually adjusting light down, even if brightness is the minimum value, manual offset continues to change. 
   (You needs to up manual offset as much as you lowered it)
 - Occasionally, LEDs turn off during change in environment lighting, if light does not turn back on, restart power
+
+- When the input from the other uc comes in on PD4, there is a delay from the time that the lights should turn on and when they actually do, its approx a 300ms delay
+	- Also, sometimes the lights wont turn on or off when they are supposed to from pressing the button on PB0 on the uc connected to the LCD
+		- It helps to hold the button for a little longer till the lights turn on
 
 */
